@@ -1,11 +1,27 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-const INITIAL_STAFF = [
+// ─── Helpers para localStorage ────────────────────────────────────────────────
+function loadStorage(key, fallback) {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function saveStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+}
+
+// ─── Datos iniciales (solo se usan la primera vez) ───────────────────────────
+const DEFAULT_STAFF = [
   "María González", "Carmen Rodríguez", "Lucía Martínez",
   "Ana López", "Isabel Fernández", "Rosa Sánchez",
 ];
 
-const INITIAL_LOCATIONS = [
+const DEFAULT_LOCATIONS = [
   { id: 1, name: "Casa Familia Pérez", type: "casa", address: "Las Condes #245" },
   { id: 2, name: "Oficina Central Torre A", type: "oficina", address: "Providencia #1200, Piso 5" },
   { id: 3, name: "Casa Familia Ruiz", type: "casa", address: "Vitacura #890" },
@@ -13,6 +29,11 @@ const INITIAL_LOCATIONS = [
   { id: 5, name: "Casa Familia Torres", type: "casa", address: "Ñuñoa #567" },
   { id: 6, name: "Oficina Clínica Norte", type: "oficina", address: "Independencia #450" },
 ];
+
+const DEFAULT_ASSIGNMENTS = {
+  1: "María González", 2: "Carmen Rodríguez", 3: "Lucía Martínez",
+  4: "Ana López", 5: null, 6: null,
+};
 
 const CHECKLIST_ITEMS = {
   "Entrada / Hall": ["Barrer y fregar el suelo","Limpiar espejos y superficies","Limpiar molduras y rodapiés","Limpiar puertas y marcos","Vaciar papeleras"],
@@ -38,16 +59,35 @@ function TypeTag({ type }) {
     : <span style={{ fontSize: 11, fontWeight: 600, background: "#E3F2FD", color: "#1565C0", padding: "3px 10px", borderRadius: 20 }}>🏢 Oficina</span>;
 }
 
+// ─── Toast de confirmación ─────────────────────────────────────────────────
+function Toast({ message }) {
+  return (
+    <div style={{
+      position: "fixed", bottom: 30, left: "50%", transform: "translateX(-50%)",
+      background: C.primary, color: "#fff", padding: "12px 24px", borderRadius: 30,
+      fontSize: 14, fontWeight: 600, zIndex: 9999, boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+      whiteSpace: "nowrap", animation: "fadeInUp 0.3s ease",
+    }}>
+      {message}
+    </div>
+  );
+}
+
 export default function App() {
+  // ─── Estado persistido ───────────────────────────────────────────────────
+  const [locations, setLocations] = useState(() => loadStorage("ct_locations", DEFAULT_LOCATIONS));
+  const [assignments, setAssignments] = useState(() => loadStorage("ct_assignments", DEFAULT_ASSIGNMENTS));
+  const [completedReports, setCompletedReports] = useState(() => loadStorage("ct_reports", []));
+  const [checklistData, setChecklistData] = useState(() => loadStorage("ct_checklist", {}));
+  const [nextId, setNextId] = useState(() => loadStorage("ct_nextid", 7));
+
+  // ─── Estado local (no persiste) ──────────────────────────────────────────
   const [screen, setScreen] = useState("home");
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [selectedLocation, setSelectedLocation] = useState(null);
-  const [locations, setLocations] = useState(INITIAL_LOCATIONS);
-  const [assignments, setAssignments] = useState({ 1: "María González", 2: "Carmen Rodríguez", 3: "Lucía Martínez", 4: "Ana López", 5: null, 6: null });
-  const [checklistData, setChecklistData] = useState({});
-  const [completedReports, setCompletedReports] = useState([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [editingLocation, setEditingLocation] = useState(null);
+  const [toast, setToast] = useState(null);
 
   const [pwInput, setPwInput] = useState("");
   const [pwError, setPwError] = useState(false);
@@ -61,8 +101,21 @@ export default function App() {
   const [newStaff, setNewStaff] = useState("");
   const [formErr, setFormErr] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [nextId, setNextId] = useState(7);
 
+  // ─── Auto-guardar en localStorage cuando cambian datos ───────────────────
+  useEffect(() => { saveStorage("ct_locations", locations); }, [locations]);
+  useEffect(() => { saveStorage("ct_assignments", assignments); }, [assignments]);
+  useEffect(() => { saveStorage("ct_reports", completedReports); }, [completedReports]);
+  useEffect(() => { saveStorage("ct_checklist", checklistData); }, [checklistData]);
+  useEffect(() => { saveStorage("ct_nextid", nextId); }, [nextId]);
+
+  // ─── Toast helper ────────────────────────────────────────────────────────
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  // ─── Handlers ────────────────────────────────────────────────────────────
   const handleLogin = () => {
     if (pwInput === SUPERVISOR_PASSWORD) {
       setPwInput(""); setPwError(false); setScreen("supervisor");
@@ -86,6 +139,7 @@ export default function App() {
     setLocations((prev) => [...prev, { id, name: newName.trim(), type: newType, address: newAddr.trim() }]);
     setAssignments((prev) => ({ ...prev, [id]: newStaff || null }));
     setShowAddModal(false);
+    showToast("✓ Propiedad guardada");
   };
 
   const handleDelete = (id) => {
@@ -93,6 +147,13 @@ export default function App() {
     setAssignments((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setChecklistData((prev) => { const n = { ...prev }; delete n[id]; return n; });
     setConfirmDelete(null);
+    showToast("Propiedad eliminada");
+  };
+
+  const handleAssignChange = (locId, value) => {
+    setAssignments((prev) => ({ ...prev, [locId]: value || null }));
+    setEditingLocation(null);
+    showToast("✓ Asignación guardada");
   };
 
   const getProgress = (id) => {
@@ -102,7 +163,10 @@ export default function App() {
   };
 
   const toggleItem = (locId, item) => {
-    setChecklistData((prev) => ({ ...prev, [locId]: { ...(prev[locId] || {}), [item]: !prev[locId]?.[item] } }));
+    setChecklistData((prev) => ({
+      ...prev,
+      [locId]: { ...(prev[locId] || {}), [item]: !prev[locId]?.[item] },
+    }));
   };
 
   const sendReport = () => {
@@ -118,8 +182,9 @@ export default function App() {
 
   const myLocations = selectedStaff ? locations.filter((l) => assignments[l.id] === selectedStaff) : [];
 
+  // ─── Estilos base ─────────────────────────────────────────────────────────
   const st = {
-    root: { minHeight: "100vh", minHeight: "100dvh", background: C.bg, fontFamily: "'Georgia','Times New Roman',serif", color: C.text, paddingBottom: 60 },
+    root: { minHeight: "100dvh", background: C.bg, fontFamily: "'Georgia','Times New Roman',serif", color: C.text, paddingBottom: 60 },
     wrap: { maxWidth: 480, margin: "0 auto", padding: "32px 20px" },
     back: { background: "none", border: "none", color: C.textMid, fontSize: 14, cursor: "pointer", padding: "8px 0", marginBottom: 20, display: "block" },
     card: { background: C.card, border: `2px solid ${C.border}`, borderRadius: 16, padding: "20px", boxShadow: "0 2px 10px rgba(0,0,0,0.04)", marginBottom: 12 },
@@ -130,9 +195,13 @@ export default function App() {
     modal: { background: C.card, borderRadius: 24, padding: "32px 28px", maxWidth: 440, width: "100%", boxShadow: "0 16px 48px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" },
   };
 
+  // ════════════════════════════════════════════════════════════════════════════
   // HOME
+  // ════════════════════════════════════════════════════════════════════════════
   if (screen === "home") return (
     <div style={st.root}>
+      <style>{`@keyframes fadeInUp{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
+      {toast && <Toast message={toast} />}
       <div style={{ ...st.wrap, textAlign: "center", paddingTop: 80 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 8 }}>
           <span style={{ fontSize: 28, color: C.primary }}>✦</span>
@@ -155,10 +224,13 @@ export default function App() {
     </div>
   );
 
+  // ════════════════════════════════════════════════════════════════════════════
   // PASSWORD
+  // ════════════════════════════════════════════════════════════════════════════
   if (screen === "password") return (
     <div style={st.root}>
-      <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}`}</style>
+      <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}} @keyframes fadeInUp{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
+      {toast && <Toast message={toast} />}
       <div style={{ ...st.wrap, paddingTop: 60 }}>
         <button style={st.back} onClick={() => { setPwInput(""); setPwError(false); setScreen("home"); }}>← Volver</button>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
@@ -184,15 +256,19 @@ export default function App() {
     </div>
   );
 
+  // ════════════════════════════════════════════════════════════════════════════
   // SELECT STAFF
+  // ════════════════════════════════════════════════════════════════════════════
   if (screen === "selectStaff") return (
     <div style={st.root}>
+      <style>{`@keyframes fadeInUp{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
+      {toast && <Toast message={toast} />}
       <div style={st.wrap}>
         <button style={st.back} onClick={() => setScreen("home")}>← Volver</button>
         <h1 style={{ fontSize: 28, fontWeight: 700, color: C.primary, margin: "0 0 6px" }}>¿Quién eres?</h1>
         <p style={{ fontSize: 14, color: C.textMid, marginBottom: 28, fontStyle: "italic" }}>Selecciona tu nombre para ver tus asignaciones</p>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {INITIAL_STAFF.map((name) => (
+          {DEFAULT_STAFF.map((name) => (
             <button key={name} onClick={() => { setSelectedStaff(name); setScreen("staff"); }} style={{ background: C.card, border: `2px solid ${C.border}`, borderRadius: 14, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", fontFamily: "'Georgia',serif" }}>
               <span style={{ width: 42, height: 42, borderRadius: "50%", background: C.accent, color: C.primary, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 18, flexShrink: 0 }}>{name[0]}</span>
               <span style={{ flex: 1, fontSize: 16, fontWeight: 600, textAlign: "left" }}>{name}</span>
@@ -204,9 +280,13 @@ export default function App() {
     </div>
   );
 
+  // ════════════════════════════════════════════════════════════════════════════
   // STAFF DASHBOARD
+  // ════════════════════════════════════════════════════════════════════════════
   if (screen === "staff") return (
     <div style={st.root}>
+      <style>{`@keyframes fadeInUp{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
+      {toast && <Toast message={toast} />}
       <div style={st.wrap}>
         <button style={st.back} onClick={() => setScreen("selectStaff")}>← Cambiar encargada</button>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 32 }}>
@@ -238,12 +318,16 @@ export default function App() {
     </div>
   );
 
+  // ════════════════════════════════════════════════════════════════════════════
   // CHECKLIST
+  // ════════════════════════════════════════════════════════════════════════════
   if (screen === "checklist") {
     const prog = getProgress(selectedLocation.id);
     const allDone = prog.checked === prog.total;
     return (
       <div style={st.root}>
+        <style>{`@keyframes fadeInUp{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
+        {toast && <Toast message={toast} />}
         {showSuccess && (
           <div style={st.overlay}>
             <div style={{ background: "#fff", borderRadius: 24, padding: "48px 40px", textAlign: "center", maxWidth: 320, width: "90%" }}>
@@ -289,9 +373,15 @@ export default function App() {
     );
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
   // SUPERVISOR
+  // ════════════════════════════════════════════════════════════════════════════
   if (screen === "supervisor") return (
     <div style={st.root}>
+      <style>{`@keyframes fadeInUp{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}`}</style>
+      {toast && <Toast message={toast} />}
+
+      {/* MODAL AGREGAR */}
       {showAddModal && (
         <div style={st.overlay}>
           <div style={st.modal}>
@@ -303,7 +393,7 @@ export default function App() {
               <label style={st.label}>Tipo de propiedad</label>
               <div style={{ display: "flex", gap: 10 }}>
                 {["casa", "oficina"].map((t) => (
-                  <button key={t} onClick={() => setNewType(t)} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `2px solid ${newType === t ? C.primary : C.border}`, background: newType === t ? "#F0FBF4" : C.card, color: newType === t ? C.primary : C.textMid, fontWeight: newType === t ? 700 : 400, cursor: "pointer", fontSize: 15, fontFamily: "'Georgia',serif", transition: "all 0.15s" }}>
+                  <button key={t} onClick={() => setNewType(t)} style={{ flex: 1, padding: "12px", borderRadius: 12, border: `2px solid ${newType === t ? C.primary : C.border}`, background: newType === t ? "#F0FBF4" : C.card, color: newType === t ? C.primary : C.textMid, fontWeight: newType === t ? 700 : 400, cursor: "pointer", fontSize: 15, fontFamily: "'Georgia',serif" }}>
                     {t === "casa" ? "🏠 Casa" : "🏢 Oficina"}
                   </button>
                 ))}
@@ -325,7 +415,7 @@ export default function App() {
               <label style={st.label}>Asignar encargada <span style={{ color: C.textLight, fontSize: 11, fontWeight: 400, textTransform: "none" }}>(opcional)</span></label>
               <select value={newStaff} onChange={(e) => setNewStaff(e.target.value)} style={{ ...st.input, cursor: "pointer" }}>
                 <option value="">— Sin asignar por ahora —</option>
-                {INITIAL_STAFF.map((s) => <option key={s} value={s}>{s}</option>)}
+                {DEFAULT_STAFF.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             {formErr && <div style={{ background: "#FFF5F5", border: `1.5px solid ${C.danger}`, borderRadius: 10, padding: "10px 14px", fontSize: 13, color: C.danger, marginBottom: 16 }}>⚠ {formErr}</div>}
@@ -336,6 +426,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* MODAL ELIMINAR */}
       {confirmDelete && (
         <div style={st.overlay}>
           <div style={{ ...st.modal, maxWidth: 360, textAlign: "center" }}>
@@ -349,15 +441,24 @@ export default function App() {
           </div>
         </div>
       )}
+
       <div style={st.wrap}>
         <button style={st.back} onClick={() => setScreen("home")}>← Cerrar sesión</button>
         <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 28 }}>
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: C.primary, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>📋</div>
           <div><div style={{ fontSize: 14, color: C.textMid }}>Panel de</div><div style={{ fontSize: 22, fontWeight: 700, color: C.primary }}>Supervisora</div></div>
         </div>
+
+        {/* REPORTES */}
         {completedReports.length > 0 && (
           <>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 14 }}>📬 Reportes Recibidos</h2>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>📬 Reportes Recibidos ({completedReports.length})</h2>
+              <button onClick={() => { if (window.confirm("¿Borrar todos los reportes?")) { setCompletedReports([]); showToast("Reportes eliminados"); } }}
+                style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 8, padding: "5px 12px", fontSize: 12, color: C.textMid, cursor: "pointer", fontFamily: "'Georgia',serif" }}>
+                🗑 Limpiar
+              </button>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28 }}>
               {completedReports.map((r) => (
                 <div key={r.id} style={{ background: "#F0FBF4", border: `2px solid ${C.primaryLight}`, borderRadius: 14, padding: "16px 18px" }}>
@@ -373,10 +474,13 @@ export default function App() {
             </div>
           </>
         )}
+
+        {/* PROPIEDADES */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>🗂 Propiedades ({locations.length})</h2>
           <button onClick={openAddModal} style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 16px", borderRadius: 12, border: "none", background: C.primary, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Georgia',serif", boxShadow: "0 3px 12px rgba(45,106,79,0.3)" }}>＋ Agregar</button>
         </div>
+
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {locations.map((loc) => {
             const prog = getProgress(loc.id);
@@ -395,10 +499,10 @@ export default function App() {
                 <div style={{ fontSize: 12, color: C.textMid, marginBottom: 10 }}>{prog.pct}% completado</div>
                 {isEditing ? (
                   <div style={{ display: "flex", gap: 8 }}>
-                    <select value={assignments[loc.id] || ""} onChange={(e) => { setAssignments((prev) => ({ ...prev, [loc.id]: e.target.value || null })); setEditingLocation(null); }}
+                    <select value={assignments[loc.id] || ""} onChange={(e) => handleAssignChange(loc.id, e.target.value)}
                       style={{ flex: 1, padding: "8px 12px", borderRadius: 10, border: `2px solid ${C.primary}`, fontSize: 14, color: C.text, background: "#fff", fontFamily: "'Georgia',serif" }}>
                       <option value="">— Sin asignar —</option>
-                      {INITIAL_STAFF.map((name) => <option key={name} value={name}>{name}</option>)}
+                      {DEFAULT_STAFF.map((name) => <option key={name} value={name}>{name}</option>)}
                     </select>
                     <button onClick={() => setEditingLocation(null)} style={{ background: "none", border: `1.5px solid ${C.border}`, borderRadius: 8, padding: "0 12px", cursor: "pointer", fontSize: 16, color: C.textMid }}>✕</button>
                   </div>
@@ -417,6 +521,9 @@ export default function App() {
       </div>
     </div>
   );
+
+  return null;
+}
 
   return null;
 }
