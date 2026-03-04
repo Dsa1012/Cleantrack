@@ -524,6 +524,3 @@ export default function App() {
 
   return null;
 }
-
-  return null;
-}
